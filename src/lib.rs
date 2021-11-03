@@ -1,3 +1,5 @@
+//! An Escrow program for the Solana blockchain
+
 // .
 // ├─ src
 // │  ├─ lib.rs -> registering modules

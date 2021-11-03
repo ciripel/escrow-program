@@ -1,3 +1,5 @@
+//! Instruction types
+
 use solana_program::program_error::ProgramError;
 use std::convert::TryInto;
 

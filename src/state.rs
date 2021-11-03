@@ -1,1 +1,1 @@
-
+//! State transition types

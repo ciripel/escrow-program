@@ -1,14 +1,17 @@
 //! Program state processor
 
-use crate::{error::EscrowError, instruction::EscrowInstruction};
+use crate::{error::EscrowError, instruction::EscrowInstruction, state::Escrow};
 use num_traits::FromPrimitive;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     decode_error::DecodeError,
     entrypoint::ProgramResult,
     msg,
+    program::invoke,
     program_error::{PrintProgramError, ProgramError},
+    program_pack::{IsInitialized, Pack},
     pubkey::Pubkey,
+    sysvar::{rent::Rent, Sysvar},
 };
 
 pub struct Processor;
@@ -44,11 +47,49 @@ impl Processor {
 
         let token_to_receive_account = next_account_info(account_info_iter)?;
 
-        if *token_to_receive_account.owner != spl_token::id() {
-            return Err(ProgramError::IncorrectProgramId);
-        }
+        spl_token::check_program_account(token_to_receive_account.owner)?;
 
         let escrow_account = next_account_info(account_info_iter)?;
+        let rent = Rent::get()?;
+
+        if !rent.is_exempt(escrow_account.lamports(), escrow_account.data_len()) {
+            return Err(EscrowError::NotRentExempt.into());
+        }
+
+        let mut escrow_info = Escrow::unpack_unchecked(&escrow_account.try_borrow_data()?)?;
+        if escrow_info.is_initialized() {
+            return Err(ProgramError::AccountAlreadyInitialized);
+        }
+
+        escrow_info.is_initialized = true;
+        escrow_info.initializer_pubkey = *initializer.key;
+        escrow_info.temp_token_account_pubkey = *temp_token_account.key;
+        escrow_info.initializer_token_to_receive_account_pubkey = *token_to_receive_account.key;
+        escrow_info.expected_amount = amount;
+
+        Escrow::pack(escrow_info, &mut escrow_account.try_borrow_mut_data()?)?;
+
+        let (pda, _bump_seed) = Pubkey::find_program_address(&[b"escrow"], program_id);
+
+        let token_program = next_account_info(account_info_iter)?;
+        let owner_change_ix = spl_token::instruction::set_authority(
+            token_program.key,
+            temp_token_account.key,
+            Some(&pda),
+            spl_token::instruction::AuthorityType::AccountOwner,
+            initializer.key,
+            &[&initializer.key],
+        )?;
+
+        msg!("Calling the token program to transfer token account ownership...");
+        invoke(
+            &owner_change_ix,
+            &[
+                temp_token_account.clone(),
+                initializer.clone(),
+                token_program.clone(),
+            ],
+        )?;
 
         Ok(())
     }
@@ -62,6 +103,7 @@ impl PrintProgramError for EscrowError {
         match self {
             // 0
             EscrowError::InvalidInstruction => msg!("Error: Invalid instruction"),
+            EscrowError::NotRentExempt => msg!("Lamport balance below rent-exempt threshold"),
         }
     }
 }

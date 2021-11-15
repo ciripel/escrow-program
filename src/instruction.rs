@@ -15,8 +15,7 @@ pub enum EscrowInstruction {
     /// 1. `[writable]` Temporary token (X) account that should be created prior to this instruction and owned by the initializer (Alice)
     /// 2. `[]` The initializer's (Alice) token account for the token (Y) they will receive should the trade go through
     /// 3. `[writable]` The escrow account, it will hold all necessary info about the trade.
-    /// 4. `[]` The rent sysvar
-    /// 5. `[]` The token program
+    /// 4. `[]` The token program
     InitEscrow {
         /// The amount initializer (Alice) expects to receive of token Y for amount of X tokens
         amount: u64,

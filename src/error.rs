@@ -11,6 +11,9 @@ pub enum EscrowError {
     /// Invalid instruction number passed in.
     #[error("Invalid instruction")]
     InvalidInstruction,
+    /// Lamport balance below rent-exempt threshold.
+    #[error("Lamport balance below rent-exempt threshold")]
+    NotRentExempt,
 }
 
 impl From<EscrowError> for ProgramError {

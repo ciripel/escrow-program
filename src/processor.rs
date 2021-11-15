@@ -78,7 +78,7 @@ impl Processor {
             Some(&pda),
             spl_token::instruction::AuthorityType::AccountOwner,
             initializer.key,
-            &[&initializer.key],
+            &[initializer.key],
         )?;
 
         msg!("Calling the token program to transfer token account ownership...");

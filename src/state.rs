@@ -7,6 +7,7 @@ use solana_program::{
 
 use arrayref::{array_mut_ref, array_ref, array_refs, mut_array_refs};
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Escrow {
     pub is_initialized: bool,
     pub initializer_pubkey: Pubkey,

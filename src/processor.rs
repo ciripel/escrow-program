@@ -125,7 +125,7 @@ impl Processor {
         let (pda, bump_seed) = Pubkey::find_program_address(&[b"escrow"], program_id);
 
         if amount_expected_by_taker != pdas_temp_token_account_info.amount {
-            return Err(EscrowError::ExpectedAmountMismach.into());
+            return Err(EscrowError::ExpectedAmountMismatch.into());
         }
 
         let initializer = next_account_info(account_info_iter)?;
@@ -233,10 +233,72 @@ impl PrintProgramError for EscrowError {
             // 0
             EscrowError::InvalidInstruction => msg!("Error: Invalid instruction"),
             EscrowError::NotRentExempt => msg!("Lamport balance below rent-exempt threshold"),
-            EscrowError::ExpectedAmountMismach => {
+            EscrowError::ExpectedAmountMismatch => {
                 msg!("Expected amount of token to be paid by initializer is not correct")
             }
             EscrowError::AmountOverflow => msg!("Can't send coins back to owner"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{error::EscrowError, state::Escrow};
+    use solana_program::{
+        program_error::{PrintProgramError, ProgramError},
+        program_pack::Pack,
+        pubkey::Pubkey,
+    };
+
+    fn return_escrow_error_as_program_error() -> ProgramError {
+        EscrowError::ExpectedAmountMismatch.into()
+    }
+
+    #[test]
+    fn test_print_error() {
+        let error = return_escrow_error_as_program_error();
+        error.print::<EscrowError>();
+    }
+
+    #[test]
+    #[should_panic(expected = "Custom(2)")]
+    fn test_error_unwrap() {
+        Err::<(), ProgramError>(return_escrow_error_as_program_error()).unwrap();
+    }
+
+    #[test]
+    fn test_pack_unpack() {
+        // Escrow
+        let check = Escrow {
+            is_initialized: true,
+            initializer_pubkey: Pubkey::new(&[2; 32]),
+            temp_token_account_pubkey: Pubkey::new(&[3; 32]),
+            initializer_token_to_receive_account_pubkey: Pubkey::new(&[4; 32]),
+            expected_amount: 5,
+        };
+
+        let mut packed = vec![0; Escrow::get_packed_len() + 1];
+        assert_eq!(
+            Err(ProgramError::InvalidAccountData),
+            Escrow::pack(check, &mut packed)
+        );
+
+        let mut packed = vec![0; Escrow::get_packed_len() - 1];
+        assert_eq!(
+            Err(ProgramError::InvalidAccountData),
+            Escrow::pack(check, &mut packed)
+        );
+
+        let mut packed = vec![0; Escrow::get_packed_len()];
+        Escrow::pack(check, &mut packed).unwrap();
+        let expect = vec![
+            1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2,
+            2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
+            3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 0, 0, 0, 0, 0, 0, 0,
+        ];
+        assert_eq!(packed, expect);
+        let unpacked = Escrow::unpack(&packed).unwrap();
+        assert_eq!(unpacked, check);
     }
 }

@@ -16,7 +16,7 @@ pub enum EscrowError {
     NotRentExempt,
     /// Expected amount of token to be paid by initializer is not correct
     #[error("Expected amount of token to be paid by initializer is not correct")]
-    ExpectedAmountMismach,
+    ExpectedAmountMismatch,
     /// Can't send coins back to owner
     #[error("Can't send coins back to owner")]
     AmountOverflow,

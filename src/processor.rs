@@ -267,6 +267,11 @@ mod tests {
     }
 
     #[test]
+    fn test_account_size() {
+        assert_eq!(Escrow::get_packed_len(), 105);
+    }
+
+    #[test]
     fn test_pack_unpack() {
         // Escrow
         let check = Escrow {

@@ -1,9 +1,13 @@
 //! Instruction types
 
-use solana_program::program_error::ProgramError;
-use std::convert::TryInto;
+use solana_program::{
+    instruction::{AccountMeta, Instruction},
+    program_error::ProgramError,
+    pubkey::Pubkey,
+};
+use std::{convert::TryInto, mem::size_of};
 
-use crate::error::EscrowError::InvalidInstruction;
+use crate::{check_program_account, error::EscrowError::InvalidInstruction};
 
 pub enum EscrowInstruction {
     /// Starts the trade by creating and populating an escrow account and transferring ownership of the given temp token account to the PDA
@@ -56,6 +60,22 @@ impl EscrowInstruction {
         })
     }
 
+    /// Packs a [EscrowInstruction](enum.EscrowInstruction.html) into a byte buffer.
+    pub fn pack(&self) -> Vec<u8> {
+        let mut buf = Vec::with_capacity(size_of::<Self>());
+        match self {
+            &Self::InitEscrow { amount } => {
+                buf.push(0);
+                buf.extend_from_slice(&amount.to_le_bytes());
+            }
+            &Self::Exchange { amount } => {
+                buf.push(1);
+                buf.extend_from_slice(&amount.to_le_bytes());
+            }
+        };
+        buf
+    }
+
     fn unpack_amount(input: &[u8]) -> Result<u64, ProgramError> {
         let amount = input
             .get(..8)
@@ -64,4 +84,31 @@ impl EscrowInstruction {
             .ok_or(InvalidInstruction)?;
         Ok(amount)
     }
+}
+
+// /// Creates a `InitEscrow` instruction.
+pub fn init_escrow(
+    escrow_program_id: &Pubkey,
+    initializer_pubkey: &Pubkey,
+    temp_token_account_pubkey: &Pubkey,
+    token_to_receive_account_pubkey: &Pubkey,
+    escrow_account_pubkey: &Pubkey,
+    amount: u64,
+) -> Result<Instruction, ProgramError> {
+    check_program_account(escrow_program_id)?;
+    let data = EscrowInstruction::InitEscrow { amount }.pack();
+
+    let accounts = vec![
+        AccountMeta::new(*initializer_pubkey, true),
+        AccountMeta::new(*temp_token_account_pubkey, false),
+        AccountMeta::new_readonly(*token_to_receive_account_pubkey, false),
+        AccountMeta::new(*escrow_account_pubkey, false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+    ];
+
+    Ok(Instruction {
+        program_id: *escrow_program_id,
+        accounts,
+        data,
+    })
 }

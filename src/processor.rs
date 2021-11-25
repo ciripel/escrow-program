@@ -243,15 +243,87 @@ impl PrintProgramError for EscrowError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{error::EscrowError, state::Escrow};
-    use solana_program::{
-        program_error::{PrintProgramError, ProgramError},
-        program_pack::Pack,
-        pubkey::Pubkey,
+    use crate::instruction::init_escrow;
+
+    use super::*;
+
+    use solana_program::{instruction::Instruction, program_error};
+    use solana_sdk::account::{
+        create_account_for_test, create_is_signer_account_infos, Account as SolanaAccount,
     };
+
+    struct SyscallStubs {}
+    impl solana_sdk::program_stubs::SyscallStubs for SyscallStubs {
+        fn sol_log(&self, _message: &str) {}
+
+        fn sol_invoke_signed(
+            &self,
+            _instruction: &Instruction,
+            _account_infos: &[AccountInfo],
+            _signers_seeds: &[&[&[u8]]],
+        ) -> ProgramResult {
+            Err(ProgramError::Custom(999)) // Just a custom error other than the ones already implemented in ProgramError
+        }
+
+        fn sol_get_clock_sysvar(&self, _var_addr: *mut u8) -> u64 {
+            program_error::UNSUPPORTED_SYSVAR
+        }
+
+        fn sol_get_epoch_schedule_sysvar(&self, _var_addr: *mut u8) -> u64 {
+            program_error::UNSUPPORTED_SYSVAR
+        }
+
+        #[allow(deprecated)]
+        fn sol_get_fees_sysvar(&self, _var_addr: *mut u8) -> u64 {
+            program_error::UNSUPPORTED_SYSVAR
+        }
+
+        fn sol_get_rent_sysvar(&self, var_addr: *mut u8) -> u64 {
+            unsafe {
+                *(var_addr as *mut _ as *mut Rent) = Rent::default();
+            }
+            solana_program::entrypoint::SUCCESS
+        }
+    }
+
+    fn do_process_instruction(
+        instruction: Instruction,
+        accounts: Vec<&mut SolanaAccount>,
+    ) -> ProgramResult {
+        {
+            use std::sync::Once;
+            static ONCE: Once = Once::new();
+
+            ONCE.call_once(|| {
+                solana_sdk::program_stubs::set_syscall_stubs(Box::new(SyscallStubs {}));
+            });
+        }
+
+        let mut meta = instruction
+            .accounts
+            .iter()
+            .zip(accounts)
+            .map(|(account_meta, account)| (&account_meta.pubkey, account_meta.is_signer, account))
+            .collect::<Vec<_>>();
+
+        let account_infos = create_is_signer_account_infos(&mut meta);
+        Processor::process(&instruction.program_id, &account_infos, &instruction.data)
+    }
 
     fn return_escrow_error_as_program_error() -> ProgramError {
         EscrowError::ExpectedAmountMismatch.into()
+    }
+
+    fn rent_sysvar() -> SolanaAccount {
+        create_account_for_test(&Rent::default())
+    }
+
+    fn token_account_minimum_balance() -> u64 {
+        Rent::default().minimum_balance(TokenAccount::get_packed_len())
+    }
+
+    fn escrow_minimum_balance() -> u64 {
+        Rent::default().minimum_balance(Escrow::get_packed_len())
     }
 
     #[test]
@@ -305,5 +377,109 @@ mod tests {
         assert_eq!(packed, expect);
         let unpacked = Escrow::unpack(&packed).unwrap();
         assert_eq!(unpacked, check);
+    }
+
+    #[test]
+    fn test_init_escrow() {
+        let program_id = crate::id();
+        let token_program_id = spl_token::id();
+        let initializer_pubkey = Pubkey::new_unique();
+        let mut initializer_account = SolanaAccount::new(
+            token_account_minimum_balance(),
+            TokenAccount::get_packed_len(),
+            &token_program_id,
+        );
+
+        let temp_token_account_pubkey = Pubkey::new_unique();
+        let mut temp_token_account = SolanaAccount::new(
+            token_account_minimum_balance(),
+            TokenAccount::get_packed_len(),
+            &token_program_id,
+        );
+
+        let initializer_token_to_receive_account_pubkey = Pubkey::new_unique();
+        let mut initializer_token_to_receive_account = SolanaAccount::new(
+            token_account_minimum_balance(),
+            TokenAccount::get_packed_len(),
+            &token_program_id,
+        );
+
+        let escrow_account_pubkey = Pubkey::new_unique();
+        let mut escrow_account = SolanaAccount::new(
+            escrow_minimum_balance(),
+            Escrow::get_packed_len(),
+            &program_id,
+        );
+
+        let mut rent_sysvar = rent_sysvar();
+
+        // escrow is not rent exempt
+        assert_eq!(
+            Err(EscrowError::NotRentExempt.into()),
+            do_process_instruction(
+                init_escrow(
+                    &program_id,
+                    &initializer_pubkey,
+                    &temp_token_account_pubkey,
+                    &initializer_token_to_receive_account_pubkey,
+                    &escrow_account_pubkey,
+                    2
+                )
+                .unwrap(),
+                vec![
+                    &mut initializer_account,
+                    &mut temp_token_account,
+                    &mut initializer_token_to_receive_account,
+                    &mut escrow_account,
+                    &mut rent_sysvar
+                ]
+            )
+        );
+
+        // escrow_account.lamports = escrow_minimum_balance();
+
+        // // create new escrow
+        // do_process_instruction(
+        //     init_escrow(
+        //         &program_id,
+        //         &initializer_pubkey,
+        //         &temp_token_account_pubkey,
+        //         &initializer_token_to_receive_account_pubkey,
+        //         &escrow_account_pubkey,
+        //         2,
+        //     )
+        //     .unwrap(),
+        //     vec![
+        //         &mut initializer_account,
+        //         &mut temp_token_account,
+        //         &mut initializer_token_to_receive_account,
+        //         &mut escrow_account,
+        //         &mut rent_sysvar,
+        //     ],
+        // )
+        // .unwrap();
+
+        // // create twice
+        // assert_eq!(
+        //     Err(ProgramError::AccountAlreadyInitialized.into()),
+        //     do_process_instruction(
+        //         init_escrow(
+        //             &program_id,
+        //             &initializer_pubkey,
+        //             &temp_token_account_pubkey,
+        //             &initializer_token_to_receive_account_pubkey,
+        //             &escrow_account_pubkey,
+        //             100,
+        //         )
+        //         .unwrap(),
+        //         vec![
+        //             &mut initializer_account,
+        //             &mut temp_token_account,
+        //             &mut initializer_token_to_receive_account,
+        //             &mut escrow_account,
+        //             &mut rent_sysvar,
+        //         ],
+        //     )
+        // );
     }
 }

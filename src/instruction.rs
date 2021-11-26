@@ -63,12 +63,12 @@ impl EscrowInstruction {
     /// Packs a [EscrowInstruction](enum.EscrowInstruction.html) into a byte buffer.
     pub fn pack(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(size_of::<Self>());
-        match self {
-            &Self::InitEscrow { amount } => {
+        match *self {
+            Self::InitEscrow { amount } => {
                 buf.push(0);
                 buf.extend_from_slice(&amount.to_le_bytes());
             }
-            &Self::Exchange { amount } => {
+            Self::Exchange { amount } => {
                 buf.push(1);
                 buf.extend_from_slice(&amount.to_le_bytes());
             }

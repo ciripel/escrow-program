@@ -262,7 +262,7 @@ mod tests {
             _account_infos: &[AccountInfo],
             _signers_seeds: &[&[&[u8]]],
         ) -> ProgramResult {
-            Err(ProgramError::Custom(999)) // Just a custom error other than the ones already implemented in ProgramError
+            Err(ProgramError::Custom(99)) // Just a custom error other than the ones already implemented in ProgramError
         }
 
         fn sol_get_clock_sysvar(&self, _var_addr: *mut u8) -> u64 {
@@ -384,11 +384,7 @@ mod tests {
         let program_id = crate::id();
         let token_program_id = spl_token::id();
         let initializer_pubkey = Pubkey::new_unique();
-        let mut initializer_account = SolanaAccount::new(
-            token_account_minimum_balance(),
-            TokenAccount::get_packed_len(),
-            &token_program_id,
-        );
+        let mut initializer_account = SolanaAccount::default();
 
         let temp_token_account_pubkey = Pubkey::new_unique();
         let mut temp_token_account = SolanaAccount::new(
@@ -405,11 +401,7 @@ mod tests {
         );
 
         let escrow_account_pubkey = Pubkey::new_unique();
-        let mut escrow_account = SolanaAccount::new(
-            escrow_minimum_balance(),
-            Escrow::get_packed_len(),
-            &program_id,
-        );
+        let mut escrow_account = SolanaAccount::new(100, Escrow::get_packed_len(), &program_id);
 
         let mut rent_sysvar = rent_sysvar();
 
@@ -423,7 +415,7 @@ mod tests {
                     &temp_token_account_pubkey,
                     &initializer_token_to_receive_account_pubkey,
                     &escrow_account_pubkey,
-                    2
+                    20
                 )
                 .unwrap(),
                 vec![
@@ -436,50 +428,50 @@ mod tests {
             )
         );
 
-        // escrow_account.lamports = escrow_minimum_balance();
+        escrow_account.lamports = escrow_minimum_balance();
 
-        // // create new escrow
-        // do_process_instruction(
-        //     init_escrow(
-        //         &program_id,
-        //         &initializer_pubkey,
-        //         &temp_token_account_pubkey,
-        //         &initializer_token_to_receive_account_pubkey,
-        //         &escrow_account_pubkey,
-        //         2,
-        //     )
-        //     .unwrap(),
-        //     vec![
-        //         &mut initializer_account,
-        //         &mut temp_token_account,
-        //         &mut initializer_token_to_receive_account,
-        //         &mut escrow_account,
-        //         &mut rent_sysvar,
-        //     ],
-        // )
-        // .unwrap();
+        // create new escrow
+        do_process_instruction(
+            init_escrow(
+                &program_id,
+                &initializer_pubkey,
+                &temp_token_account_pubkey,
+                &initializer_token_to_receive_account_pubkey,
+                &escrow_account_pubkey,
+                20,
+            )
+            .unwrap(),
+            vec![
+                &mut initializer_account,
+                &mut temp_token_account,
+                &mut initializer_token_to_receive_account,
+                &mut escrow_account,
+                &mut rent_sysvar,
+            ],
+        )
+        .unwrap_or_default();
 
-        // // create twice
-        // assert_eq!(
-        //     Err(ProgramError::AccountAlreadyInitialized.into()),
-        //     do_process_instruction(
-        //         init_escrow(
-        //             &program_id,
-        //             &initializer_pubkey,
-        //             &temp_token_account_pubkey,
-        //             &initializer_token_to_receive_account_pubkey,
-        //             &escrow_account_pubkey,
-        //             100,
-        //         )
-        //         .unwrap(),
-        //         vec![
-        //             &mut initializer_account,
-        //             &mut temp_token_account,
-        //             &mut initializer_token_to_receive_account,
-        //             &mut escrow_account,
-        //             &mut rent_sysvar,
-        //         ],
-        //     )
-        // );
+        // Do not allow to create twice
+        assert_eq!(
+            Err(ProgramError::AccountAlreadyInitialized.into()),
+            do_process_instruction(
+                init_escrow(
+                    &program_id,
+                    &initializer_pubkey,
+                    &temp_token_account_pubkey,
+                    &initializer_token_to_receive_account_pubkey,
+                    &escrow_account_pubkey,
+                    20,
+                )
+                .unwrap(),
+                vec![
+                    &mut initializer_account,
+                    &mut temp_token_account,
+                    &mut initializer_token_to_receive_account,
+                    &mut escrow_account,
+                    &mut rent_sysvar,
+                ],
+            )
+        );
     }
 }

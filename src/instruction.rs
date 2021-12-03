@@ -34,10 +34,10 @@ pub enum EscrowInstruction {
     /// 2. `[writable]` The taker's (Bob) token account for the token (X) they will receive should the trade go through
     /// 3. `[writable]` The PDA's temp token account to get tokens (X) from and eventually close (Account 1. from InitEscrow)
     /// 4. `[writable]` The initializer's (Alice) main account to send their rent fees to (Account 0. from InitEscrow)
-    /// 5. `[writable]` The initializer's (Alice) token account that will receive tokens (Account 2. from InitEscrow)
+    /// 5. `[writable]` The initializer's (Alice) token account that will receive tokens (Y) (Account 2. from InitEscrow)
     /// 6. `[writable]` The escrow account holding the escrow info (Account 3. from InitEscrow)
     /// 7. `[]` The token program (SPL-token program)
-    /// 8. `[]` The PDA account (?)
+    /// 8. `[]` The PDA account
     Exchange {
         /// the amount the taker (Bob) expects to be paid in the other token (X)
         amount: u64, // as a u64 because that's the max possible supply of a token
@@ -86,8 +86,8 @@ impl EscrowInstruction {
     }
 }
 
-// /// Creates a `InitEscrow` instruction.
-pub fn init_escrow(
+/// Creates an `InitEscrow` instruction.
+pub fn initialize_escrow(
     escrow_program_id: &Pubkey,
     initializer_pubkey: &Pubkey,
     temp_token_account_pubkey: &Pubkey,
@@ -104,6 +104,42 @@ pub fn init_escrow(
         AccountMeta::new_readonly(*token_to_receive_account_pubkey, false),
         AccountMeta::new(*escrow_account_pubkey, false),
         AccountMeta::new_readonly(spl_token::id(), false),
+    ];
+
+    Ok(Instruction {
+        program_id: *escrow_program_id,
+        accounts,
+        data,
+    })
+}
+
+/// Creates an `Exchange` instruction.
+#[allow(clippy::too_many_arguments)]
+pub fn exchange(
+    escrow_program_id: &Pubkey,
+    taker_pubkey: &Pubkey,
+    takers_sending_token_account_pubkey: &Pubkey,
+    takers_token_to_receive_account_pubkey: &Pubkey,
+    pdas_temp_token_account_pubkey: &Pubkey,
+    initializer_pubkey: &Pubkey,
+    token_to_receive_account_pubkey: &Pubkey,
+    escrow_account_pubkey: &Pubkey,
+    pda_account_pubkey: &Pubkey,
+    amount: u64,
+) -> Result<Instruction, ProgramError> {
+    check_program_account(escrow_program_id)?;
+    let data = EscrowInstruction::Exchange { amount }.pack();
+
+    let accounts = vec![
+        AccountMeta::new(*taker_pubkey, true),
+        AccountMeta::new(*takers_sending_token_account_pubkey, false),
+        AccountMeta::new(*takers_token_to_receive_account_pubkey, false),
+        AccountMeta::new(*pdas_temp_token_account_pubkey, false),
+        AccountMeta::new(*initializer_pubkey, false),
+        AccountMeta::new(*token_to_receive_account_pubkey, false),
+        AccountMeta::new(*escrow_account_pubkey, false),
+        AccountMeta::new_readonly(spl_token::id(), false),
+        AccountMeta::new_readonly(*pda_account_pubkey, false),
     ];
 
     Ok(Instruction {
